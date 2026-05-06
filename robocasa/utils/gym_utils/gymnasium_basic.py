@@ -75,7 +75,10 @@ def create_env_robosuite(
                 "layout_ids": None,
                 "style_ids": None,
                 "layout_and_style_ids": [[1, 1], [2, 2], [4, 4], [6, 9], [7, 10]],
-                "obj_instance_split": "B",
+                # squarefk/robocasa 는 split 라벨을 "A"/"B" 로 쓰지만 우리 fork (hanyangtae/robocasa)
+                # 의 sample_kitchen_object_helper 는 "pretrain"/"target" 만 인식. "B" ≡ "target"
+                # (둘 다 split_th 이후 절반).
+                "obj_instance_split": "target",
                 "generative_textures": None,
                 "randomize_cameras": False,
             }
@@ -138,6 +141,11 @@ class RoboCasaEnv(gym.Env):
             enable_render=enable_render,
             **kwargs,  # Forward kwargs to create_env_robosuite
         )
+
+        # robocasa Kitchen 은 load_model_on_init=False 로 MujocoEnv 를 호출하므로
+        # robosuite.make 직후에는 self.env.robots == [None]. action/observation space
+        # 유도를 위해 robot 객체가 필요하니 한 번 reset 해서 모델/robot 을 로드한다.
+        self.env.reset()
 
         # TODO: the following info should be output by grootrobocasa
         self.camera_names = camera_names
