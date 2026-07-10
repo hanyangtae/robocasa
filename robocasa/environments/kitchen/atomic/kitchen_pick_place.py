@@ -885,18 +885,42 @@ class PickPlaceCounterToStove(PickPlace):
 
         return cfgs
 
+    # Corrected scoring (temporal_vla docs/steering/18): the original center-distance
+    # threshold 0.07 is far tighter than the pan horizontal radius (~0.23), misjudging
+    # ~10% of in-pan placements as failures. 0.10 (flip saturation point) is the official
+    # judgment; the 0.07 judgment is still tracked per step for dual reporting.
+    SUCC_TH_ORIG = 0.07
+    SUCC_TH_CORRECTED = 0.10
+
     def _check_success(self):
         """
         Check if the counter to stove pick and place task is successful.
-        Checks if the object is on the pan and the gripper far from the object.
+        Checks if the object is on the pan (center distance < SUCC_TH_CORRECTED,
+        same-step contact) and the gripper far from the object. Per-step metrics and
+        per-episode `ever` flags for both thresholds are exposed on the env
+        (_pq2_succ_ever / _pq2_metrics) so collectors can record both judgments.
 
         Returns:
-            bool: True if the task is successful, False otherwise
+            bool: True if the task is successful (corrected threshold), False otherwise
         """
-        obj_in_container = OU.check_obj_in_receptacle(self, "obj", "container", th=0.07)
+        obj_pos = np.array(self.sim.data.body_xpos[self.obj_body_id["obj"]])
+        recep_pos = np.array(self.sim.data.body_xpos[self.obj_body_id["container"]])
+        d_xy = float(np.linalg.norm(obj_pos[:2] - recep_pos[:2]))
+        contact = self.check_contact(self.objects["obj"], self.objects["container"])
         gripper_obj_far = OU.gripper_obj_far(self)
-
-        return obj_in_container and gripper_obj_far
+        succ = {
+            th: bool(contact and d_xy < th and gripper_obj_far)
+            for th in (self.SUCC_TH_ORIG, self.SUCC_TH_CORRECTED)
+        }
+        # per-episode `ever` accumulation; timestep regression means a new episode began
+        last_t = getattr(self, "_pq2_last_timestep", None)
+        if last_t is None or self.timestep <= last_t:
+            self._pq2_succ_ever = {f"{th:g}": False for th in succ}
+        for th, ok in succ.items():
+            self._pq2_succ_ever[f"{th:g}"] |= ok
+        self._pq2_last_timestep = self.timestep
+        self._pq2_metrics = {"d_xy": d_xy, "contact": contact, "gripper_obj_far": gripper_obj_far}
+        return succ[self.SUCC_TH_CORRECTED]
 
 
 class PickPlaceStoveToCounter(PickPlace):
