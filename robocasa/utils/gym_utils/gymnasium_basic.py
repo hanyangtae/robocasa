@@ -70,11 +70,21 @@ def create_env_robosuite(
     )
     env_class = REGISTERED_ENVS[env_name]
     if issubclass(env_class, Kitchen):
+        # 주방 목록: 인자 > 환경변수 ROBOCASA_LAYOUT_STYLE_IDS("1:1,2:2,...") > 기본 GR00T 평가 5주방.
+        # ★ 목록이 바뀌면 seed→주방 추첨이 달라져 기존 seed 의 세계가 재현되지 않는다 —
+        #   plan 마다 쓴 목록을 기록할 것 (2026-09-03, 시나리오 v5b 확장).
+        _env_ls = os.environ.get("ROBOCASA_LAYOUT_STYLE_IDS")
+        if layout_and_style_ids is None and _env_ls:
+            layout_and_style_ids = [
+                [int(a), int(b)] for a, b in (tok.split(":") for tok in _env_ls.split(",") if tok.strip())
+            ]
+        if layout_and_style_ids is None:
+            layout_and_style_ids = [[1, 1], [2, 2], [4, 4], [6, 9], [7, 10]]
         env_kwargs.update(
             {
                 "layout_ids": None,
                 "style_ids": None,
-                "layout_and_style_ids": [[1, 1], [2, 2], [4, 4], [6, 9], [7, 10]],
+                "layout_and_style_ids": [list(x) for x in layout_and_style_ids],
                 # squarefk/robocasa 는 split 라벨을 "A"/"B" 로 쓰지만 우리 fork (hanyangtae/robocasa)
                 # 의 sample_kitchen_object_helper 는 "pretrain"/"target" 만 인식. "B" ≡ "target"
                 # (둘 다 split_th 이후 절반).
